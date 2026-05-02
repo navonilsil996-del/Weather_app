@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WeatherDrift — Live Weather Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+</head>
+<body>
+  <div class="noise"></div>
+  <div class="grid-bg"></div>
+
+  <header>
+    <div class="logo">WEATHER<span>DRIFT</span></div>
+    <div class="tagline">Real-time atmospheric intelligence</div>
+  </header>
+
+  <main>
+    <section class="search-section">
+      <div class="search-box">
+        <input type="text" id="cityInput" placeholder="Enter city name..." autocomplete="off"/>
+        <button id="searchBtn">TRACK →</button>
+      </div>
+      <div class="geo-btn-wrap">
+        <button id="geoBtn" class="geo-btn">⊕ USE MY LOCATION</button>
+      </div>
+    </section>
+
+    <div id="errorMsg" class="error-msg hidden"></div>
+    <div id="loader" class="loader hidden">
+      <div class="loader-bar"></div>
+    </div>
+
+    <section id="weatherCard" class="weather-card hidden">
+      <div class="card-left">
+        <div class="city-name" id="cityName">—</div>
+        <div class="country" id="countryName">—</div>
+        <div class="weather-desc" id="weatherDesc">—</div>
+        <div class="temp-block">
+          <span class="temp-val" id="temperature">—</span>
+          <div class="temp-toggle">
+            <button id="celsiusBtn" class="active">°C</button>
+            <button id="fahrenheitBtn">°F</button>
+          </div>
+        </div>
+        <div class="feels-like">Feels like <span id="feelsLike">—</span></div>
+      </div>
+      <div class="card-right">
+        <div class="weather-icon-big" id="weatherIconBig">☁️</div>
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="meta-label">HUMIDITY</div>
+            <div class="meta-val" id="humidity">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">WIND</div>
+            <div class="meta-val" id="windSpeed">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">PRESSURE</div>
+            <div class="meta-val" id="pressure">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">VISIBILITY</div>
+            <div class="meta-val" id="visibility">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">SUNRISE</div>
+            <div class="meta-val" id="sunrise">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">SUNSET</div>
+            <div class="meta-val" id="sunset">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="forecastSection" class="forecast-section hidden">
+      <div class="forecast-title">5-DAY OUTLOOK</div>
+      <div class="forecast-row" id="forecastRow"></div>
+    </section>
+
+    <section id="historySection" class="history-section hidden">
+      <div class="history-title">RECENT SEARCHES</div>
+      <div class="history-tags" id="historyTags"></div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Powered by OpenWeatherMap API</span>
+    <span id="lastUpdated"></span>
+  </footer>
+
+  <script src="app.js"></script>
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+</body>
+</html>
