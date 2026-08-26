@@ -1,12 +1,10 @@
 // ============================================================
 //  WeatherDrift — app.js
-//  Uses OpenWeatherMap API (Free tier)
-//  Replace API_KEY with your own key from openweathermap.org
+//  Uses Open-Meteo API (Free tier, no API key required)
 // ============================================================
 
-const API_KEY = 'ff33b33a2aa14a5ab0854521260205'; // ← Paste your key here
-const BASE_URL = 'https://api.openweathermap.org/data/2.5';
-const GEO_URL = 'https://api.openweathermap.org/geo/1.0';
+const GEO_BASE = 'https://geocoding-api.open-meteo.com/v1/search';
+const WEATHER_BASE = 'https://api.open-meteo.com/v1/forecast';
 
 // ---- State ----
 let currentTempC = null;
@@ -51,17 +49,14 @@ fahrenheitBtn.addEventListener('click', () => {
 
 async function handleSearch(city) {
   if (!city) return showError('Please enter a city name.');
-  if (API_KEY === 'YOUR_API_KEY_HERE') {
-    return showError('⚠ No API key set. Open app.js and replace YOUR_API_KEY_HERE with your OpenWeatherMap key.');
-  }
   clearError();
   showLoader();
   try {
-    const weather = await fetchWeather(city);
-    const forecast = await fetchForecast(city);
-    displayWeather(weather);
-    displayForecast(forecast);
-    addToHistory(city);
+    const loc = await getCoordinates(city);
+    const weatherData = await fetchMeteoData(loc.latitude, loc.longitude);
+    displayWeather(weatherData, loc.name, loc.country_code?.toUpperCase() || loc.country);
+    displayForecast(weatherData.daily);
+    addToHistory(loc.name);
   } catch (err) {
     showError(err.message || 'Could not fetch weather. Check the city name.');
   } finally {
@@ -71,21 +66,15 @@ async function handleSearch(city) {
 
 async function handleGeoLocation() {
   if (!navigator.geolocation) return showError('Geolocation not supported by your browser.');
-  if (API_KEY === 'YOUR_API_KEY_HERE') {
-    return showError('⚠ No API key set. Open app.js and replace YOUR_API_KEY_HERE with your OpenWeatherMap key.');
-  }
   clearError();
   showLoader();
   geoBtn.textContent = '⊕ LOCATING...';
   navigator.geolocation.getCurrentPosition(
     async ({ coords }) => {
       try {
-        const weather = await fetchWeatherByCoords(coords.latitude, coords.longitude);
-        const forecast = await fetchForecastByCoords(coords.latitude, coords.longitude);
-        displayWeather(weather);
-        displayForecast(forecast);
-        addToHistory(weather.name);
-        cityInput.value = weather.name;
+        const weatherData = await fetchMeteoData(coords.latitude, coords.longitude);
+        displayWeather(weatherData, 'Current Location', '');
+        displayForecast(weatherData.daily);
       } catch (err) {
         showError(err.message || 'Could not fetch weather for your location.');
       } finally {
@@ -103,60 +92,59 @@ async function handleGeoLocation() {
 
 // ---- API Calls ----
 
-async function fetchWeather(city) {
-  const res = await fetch(
-    `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`
-  );
-  if (!res.ok) throw new Error(res.status === 404 ? `City "${city}" not found.` : 'API error. Check your key.');
-  return res.json();
+async function getCoordinates(city) {
+  const res = await fetch(`${GEO_BASE}?name=${encodeURIComponent(city)}&count=1&language=en&format=json`);
+  const data = await res.json();
+  if (!data.results || data.results.length === 0) {
+    throw new Error(`City "${city}" not found.`);
+  }
+  return data.results[0]; // Returns { name, country, latitude, longitude }
 }
 
-async function fetchWeatherByCoords(lat, lon) {
-  const res = await fetch(
-    `${BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
-  );
-  if (!res.ok) throw new Error('Could not get weather for your location.');
-  return res.json();
-}
+async function fetchMeteoData(lat, lon) {
+  const params = new URLSearchParams({
+    latitude: lat,
+    longitude: lon,
+    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,weather_code',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset',
+    wind_speed_unit: 'kmh',
+    timezone: 'auto'
+  });
 
-async function fetchForecast(city) {
-  const res = await fetch(
-    `${BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&cnt=40`
-  );
-  if (!res.ok) throw new Error('Could not fetch forecast.');
-  return res.json();
-}
-
-async function fetchForecastByCoords(lat, lon) {
-  const res = await fetch(
-    `${BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&cnt=40`
-  );
-  if (!res.ok) throw new Error('Could not fetch forecast.');
+  const res = await fetch(`${WEATHER_BASE}?${params.toString()}`);
+  if (!res.ok) throw new Error('Could not fetch weather data.');
   return res.json();
 }
 
 // ---- Display Functions ----
 
-function displayWeather(data) {
-  currentTempC = data.main.temp;
-  currentFeelsC = data.main.feels_like;
+function displayWeather(data, locationName, countryCode) {
+  const current = data.current;
+  const daily = data.daily;
+  const weatherInfo = getWmoDetails(current.weather_code);
 
-  document.getElementById('cityName').textContent = data.name;
+  currentTempC = current.temperature_2m;
+  currentFeelsC = current.apparent_temperature;
+
+  document.getElementById('cityName').textContent = locationName;
+  
+  const locationText = countryCode ? `${countryCode} · ` : '';
   document.getElementById('countryName').textContent =
-    `${data.sys.country} · ${data.coord.lat.toFixed(2)}°, ${data.coord.lon.toFixed(2)}°`;
-  document.getElementById('weatherDesc').textContent = data.weather[0].description;
-  document.getElementById('humidity').textContent = `${data.main.humidity}%`;
-  document.getElementById('windSpeed').textContent = `${(data.wind.speed * 3.6).toFixed(1)} km/h`;
-  document.getElementById('pressure').textContent = `${data.main.pressure} hPa`;
-  document.getElementById('visibility').textContent = data.visibility
-    ? `${(data.visibility / 1000).toFixed(1)} km` : 'N/A';
+    `${locationText}${data.latitude.toFixed(2)}°, ${data.longitude.toFixed(2)}°`;
+    
+  document.getElementById('weatherDesc').textContent = weatherInfo.desc;
+  document.getElementById('humidity').textContent = `${current.relative_humidity_2m}%`;
+  document.getElementById('windSpeed').textContent = `${current.wind_speed_10m} km/h`;
+  document.getElementById('pressure').textContent = `${Math.round(current.surface_pressure)} hPa`;
+  document.getElementById('visibility').textContent = 'N/A'; // Open-Meteo free tier omits surface visibility
 
-  const sunriseTime = new Date(data.sys.sunrise * 1000);
-  const sunsetTime = new Date(data.sys.sunset * 1000);
-  document.getElementById('sunrise').textContent = formatTime(sunriseTime);
-  document.getElementById('sunset').textContent = formatTime(sunsetTime);
+  // Format Sunrise & Sunset from ISO string
+  const sunriseDate = new Date(daily.sunrise[0]);
+  const sunsetDate = new Date(daily.sunset[0]);
+  document.getElementById('sunrise').textContent = formatTime(sunriseDate);
+  document.getElementById('sunset').textContent = formatTime(sunsetDate);
 
-  document.getElementById('weatherIconBig').textContent = getWeatherEmoji(data.weather[0].id);
+  document.getElementById('weatherIconBig').textContent = weatherInfo.emoji;
 
   isCelsius = true;
   setActiveUnit();
@@ -166,29 +154,16 @@ function displayWeather(data) {
   updateLastUpdated();
 }
 
-function displayForecast(data) {
+function displayForecast(daily) {
   const forecastRow = document.getElementById('forecastRow');
   forecastRow.innerHTML = '';
 
-  // Get one reading per day (around noon)
-  const days = {};
-  data.list.forEach(item => {
-    const date = new Date(item.dt * 1000);
-    const dayKey = date.toDateString();
-    const hour = date.getHours();
-    if (!days[dayKey] || Math.abs(hour - 12) < Math.abs(new Date(days[dayKey].dt * 1000).getHours() - 12)) {
-      days[dayKey] = item;
-    }
-  });
-
-  const dayEntries = Object.values(days).slice(0, 5);
-
-  dayEntries.forEach((item, i) => {
-    const date = new Date(item.dt * 1000);
+  const totalDays = Math.min(5, daily.time.length);
+  for (let i = 0; i < totalDays; i++) {
+    const date = new Date(daily.time[i]);
     const dayLabel = i === 0 ? 'TODAY' : date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-    const temp = Math.round(item.main.temp);
-    const emoji = getWeatherEmoji(item.weather[0].id);
-    const desc = item.weather[0].description;
+    const temp = Math.round(daily.temperature_2m_max[i]);
+    const { desc, emoji } = getWmoDetails(daily.weather_code[i]);
 
     const card = document.createElement('div');
     card.className = 'forecast-card';
@@ -199,7 +174,7 @@ function displayForecast(data) {
       <div class="fc-desc">${desc}</div>
     `;
     forecastRow.appendChild(card);
-  });
+  }
 
   forecastSection.classList.remove('hidden');
 }
@@ -255,17 +230,31 @@ function renderHistory() {
 
 // ---- Utility ----
 
-function getWeatherEmoji(id) {
-  if (id >= 200 && id < 300) return '⛈';
-  if (id >= 300 && id < 400) return '🌦';
-  if (id >= 500 && id < 600) return id < 502 ? '🌧' : '🌊';
-  if (id >= 600 && id < 700) return id < 611 ? '❄️' : '🌨';
-  if (id >= 700 && id < 800) return id === 741 ? '🌫' : '🌪';
-  if (id === 800) return '☀️';
-  if (id === 801) return '🌤';
-  if (id === 802) return '⛅';
-  if (id >= 803) return '☁️';
-  return '🌡';
+function getWmoDetails(code) {
+  const codeMap = {
+    0: { desc: 'Clear sky', emoji: '☀️' },
+    1: { desc: 'Mainly clear', emoji: '🌤' },
+    2: { desc: 'Partly cloudy', emoji: '⛅' },
+    3: { desc: 'Overcast', emoji: '☁️' },
+    45: { desc: 'Foggy', emoji: '🌫' },
+    48: { desc: 'Depositing rime fog', emoji: '🌫' },
+    51: { desc: 'Light drizzle', emoji: '🌦' },
+    53: { desc: 'Moderate drizzle', emoji: '🌦' },
+    55: { desc: 'Dense drizzle', emoji: '🌧' },
+    61: { desc: 'Slight rain', emoji: '🌧' },
+    63: { desc: 'Moderate rain', emoji: '🌧' },
+    65: { desc: 'Heavy rain', emoji: '🌊' },
+    71: { desc: 'Slight snow', emoji: '❄️' },
+    73: { desc: 'Moderate snow', emoji: '❄️' },
+    75: { desc: 'Heavy snow', emoji: '🌨' },
+    80: { desc: 'Slight rain showers', emoji: '🌦' },
+    81: { desc: 'Moderate rain showers', emoji: '🌧' },
+    82: { desc: 'Violent rain showers', emoji: '⛈' },
+    95: { desc: 'Thunderstorm', emoji: '⛈' },
+    96: { desc: 'Thunderstorm with hail', emoji: '⛈' },
+    99: { desc: 'Heavy thunderstorm with hail', emoji: '⛈' }
+  };
+  return codeMap[code] || { desc: 'Unknown', emoji: '🌡' };
 }
 
 function formatTime(date) {
